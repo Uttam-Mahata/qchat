@@ -35,6 +35,16 @@ export async function generateKeyPair(): Promise<KeyPair> {
 
 /**
  * Store keypair in local storage
+ * 
+ * ⚠️ SECURITY WARNING: Storing secret keys in localStorage is not secure
+ * for production use. Secret keys should be:
+ * 1. Stored in secure, encrypted storage (e.g., IndexedDB with encryption)
+ * 2. Never transmitted to the server
+ * 3. Protected with additional encryption (e.g., password-derived key)
+ * 
+ * This demo implementation uses localStorage for simplicity only.
+ * In production, use the Web Crypto API with non-extractable keys or
+ * a hardware security module (HSM).
  */
 export function storeKeyPair(keypair: KeyPair): void {
   localStorage.setItem('qchat_keypair', JSON.stringify(keypair));
