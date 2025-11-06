@@ -65,8 +65,15 @@ export function decapsulate(ciphertext: Uint8Array, secretKey: Uint8Array): Uint
  * TODO: Replace with AES-GCM or ChaCha20-Poly1305 for production use
  */
 function xorEncrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
-  const result = new Uint8Array(data.length);
-  for (let i = 0; i < data.length; i++) {
+  // Validate input to prevent potential issues with unbounded loops
+  const MAX_DATA_SIZE = 10 * 1024 * 1024; // 10MB limit
+  if (data.length > MAX_DATA_SIZE) {
+    throw new Error(`Data size exceeds maximum allowed size of ${MAX_DATA_SIZE} bytes`);
+  }
+  
+  const dataLength = data.length;
+  const result = new Uint8Array(dataLength);
+  for (let i = 0; i < dataLength; i++) {
     result[i] = data[i] ^ key[i % key.length];
   }
   return result;
