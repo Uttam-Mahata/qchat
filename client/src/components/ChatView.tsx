@@ -50,7 +50,11 @@ export function ChatView({
         ) {
           const newMessage: Message = {
             id: data.id,
-            content: data.encryptedContent, // In production, decrypt here
+            // TODO: Decrypt content with user's private key
+            // For now, showing placeholder since encryption is not fully implemented client-side
+            content: data.encryptedContent.includes('demo') 
+              ? data.encryptedContent 
+              : '[Encrypted Message - Decryption pending]',
             timestamp: new Date(data.timestamp).toLocaleTimeString([], { 
               hour: '2-digit', 
               minute: '2-digit' 
@@ -110,9 +114,12 @@ export function ChatView({
     };
     setMessages(prev => [...prev, tempMessage]);
 
-    // Send via WebSocket (encrypted content would be handled here in production)
+    // TODO: Encrypt content with recipient's public key before sending
+    // For now, sending plaintext with a marker to indicate it's demo data
+    // In production, this should use the recipient's public key from the API
+    // and encrypt using ML-KEM encapsulation + symmetric encryption
     client.sendMessage(recipientId || null, roomId || null, content, {
-      encryptedContent: content, // In production, encrypt with recipient's public key
+      encryptedContent: `demo:${content}`, // Marked as demo to distinguish from real encrypted data
       encapsulatedKey: '',
       nonce: '',
     });

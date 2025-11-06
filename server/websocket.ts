@@ -303,8 +303,20 @@ export class WebSocketManager {
   }
 
   private async getMessageSender(messageId: string): Promise<Message | null> {
-    // Helper to get message details - in a real app, this would query the database
-    return null;
+    // Query storage to find the message
+    try {
+      // Since we're using in-memory storage, we need to access it
+      // In production, this would be a database query
+      const messages = (storage as any).messages as Map<string, Message>;
+      if (!messages) return null;
+      
+      const allMessages = Array.from(messages.values());
+      const message = allMessages.find(msg => msg.id === messageId);
+      return message || null;
+    } catch (error) {
+      console.error('Error getting message:', error);
+      return null;
+    }
   }
 
   /**
