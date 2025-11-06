@@ -127,7 +127,12 @@ export function ChatView({
 
   return (
     <div className="flex flex-col h-full">
-      <ChatHeader name={chatName} status={status} />
+      <ChatHeader 
+        name={chatName} 
+        chatId={chatId}
+        recipientId={recipientId}
+        status={status} 
+      />
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4 max-w-4xl mx-auto">
           {messages.map((message) => (
