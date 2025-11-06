@@ -55,8 +55,14 @@ export function decapsulate(ciphertext: Uint8Array, secretKey: Uint8Array): Uint
 }
 
 /**
- * Simple XOR cipher for demonstration - in production, use AES-GCM
- * This demonstrates how the shared secret is used for symmetric encryption
+ * Simple XOR cipher for demonstration - SECURITY WARNING: NOT CRYPTOGRAPHICALLY SECURE
+ * 
+ * ⚠️ This is a placeholder implementation for demonstration purposes only.
+ * In a production environment, this MUST be replaced with a proper AEAD cipher
+ * such as AES-256-GCM. The XOR cipher provides no security guarantees and
+ * should never be used for real data encryption.
+ * 
+ * TODO: Replace with AES-GCM or ChaCha20-Poly1305 for production use
  */
 function xorEncrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
   const result = new Uint8Array(data.length);

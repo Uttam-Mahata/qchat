@@ -151,7 +151,10 @@ export default function Home() {
                 <ChatView
                   chatName={activeChatData.name}
                   chatId={activeChatData.id}
-                  recipientId={activeChatData.id} // In production, this would be the actual user ID
+                  // NOTE: Using chat ID as recipient ID for demo purposes
+                  // In production, chats would have proper user IDs from the database
+                  // and this would map to the actual recipient's user ID
+                  recipientId={`user-${activeChatData.id}`}
                   status={activeChatData.status}
                   initialMessages={mockMessages[activeChat] || []}
                 />

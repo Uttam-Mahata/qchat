@@ -105,7 +105,11 @@ export class MemStorage implements IStorage {
   async getMessagesByRoom(roomId: string, limit: number = 100): Promise<Message[]> {
     return Array.from(this.messages.values())
       .filter(msg => msg.roomId === roomId)
-      .sort((a, b) => (b.timestamp?.getTime() || 0) - (a.timestamp?.getTime() || 0))
+      .sort((a, b) => {
+        const timeA = a.timestamp ? a.timestamp.getTime() : 0;
+        const timeB = b.timestamp ? b.timestamp.getTime() : 0;
+        return timeB - timeA;
+      })
       .slice(0, limit);
   }
 
@@ -115,7 +119,11 @@ export class MemStorage implements IStorage {
         (msg.senderId === userId1 && msg.recipientId === userId2) ||
         (msg.senderId === userId2 && msg.recipientId === userId1)
       )
-      .sort((a, b) => (b.timestamp?.getTime() || 0) - (a.timestamp?.getTime() || 0))
+      .sort((a, b) => {
+        const timeA = a.timestamp ? a.timestamp.getTime() : 0;
+        const timeB = b.timestamp ? b.timestamp.getTime() : 0;
+        return timeB - timeA;
+      })
       .slice(0, limit);
   }
 
