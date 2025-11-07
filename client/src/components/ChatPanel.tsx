@@ -26,7 +26,7 @@ export function ChatPanel({ chats, activeChat, onChatSelect }: ChatPanelProps) {
   );
 
   return (
-    <div className="w-80 bg-sidebar border-r border-sidebar-border flex flex-col h-full">
+    <div className="hidden md:flex md:w-80 lg:w-96 bg-sidebar border-r border-sidebar-border flex-col h-full">
       <div className="p-4 border-b border-sidebar-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -41,18 +41,24 @@ export function ChatPanel({ chats, activeChat, onChatSelect }: ChatPanelProps) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {filteredChats.map((chat) => (
-          <ChatListItem
-            key={chat.id}
-            name={chat.name}
-            lastMessage={chat.lastMessage}
-            timestamp={chat.timestamp}
-            unreadCount={chat.unreadCount}
-            status={chat.status}
-            isActive={activeChat === chat.id}
-            onClick={() => onChatSelect(chat.id)}
-          />
-        ))}
+        {filteredChats.length > 0 ? (
+          filteredChats.map((chat) => (
+            <ChatListItem
+              key={chat.id}
+              name={chat.name}
+              lastMessage={chat.lastMessage}
+              timestamp={chat.timestamp}
+              unreadCount={chat.unreadCount}
+              status={chat.status}
+              isActive={activeChat === chat.id}
+              onClick={() => onChatSelect(chat.id)}
+            />
+          ))
+        ) : (
+          <div className="p-4 text-center text-sm text-muted-foreground">
+            No conversations found
+          </div>
+        )}
       </div>
     </div>
   );
