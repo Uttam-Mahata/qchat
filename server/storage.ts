@@ -33,6 +33,7 @@ export interface IStorage {
   
   // Message methods
   createMessage(message: InsertMessage): Promise<Message>;
+  createMessages(messages: InsertMessage[]): Promise<Message[]>;
   getMessage(id: string): Promise<Message | undefined>;
   getMessagesByRoom(roomId: string, limit?: number, userId?: string): Promise<Message[]>;
   getMessagesBetweenUsers(userId1: string, userId2: string, limit?: number): Promise<Message[]>;
@@ -114,6 +115,24 @@ export class MemStorage implements IStorage {
     return message;
   }
 
+  async createMessages(insertMessages: InsertMessage[]): Promise<Message[]> {
+    const messages: Message[] = [];
+    for (const insertMessage of insertMessages) {
+      const id = randomUUID();
+      const message: Message = {
+        ...insertMessage,
+        id,
+        recipientId: insertMessage.recipientId || null,
+        roomId: insertMessage.roomId || null,
+        timestamp: new Date(),
+        isRead: false,
+      };
+      this.messages.set(id, message);
+      messages.push(message);
+    }
+    return messages;
+  }
+
   async getMessage(id: string): Promise<Message | undefined> {
     return this.messages.get(id);
   }
@@ -127,10 +146,13 @@ export class MemStorage implements IStorage {
         return timeB - timeA;
       });
 
-    // If userId is provided, filter to only include messages encrypted for that user or sent by that user
+    // If userId is provided, filter to only include messages encrypted for that user
     if (userId) {
       const userMessages = allMessages.filter(msg => 
-        msg.senderId === userId || msg.recipientId === userId || msg.recipientId === null
+        // Include messages sent by the user (their own encrypted version)
+        (msg.senderId === userId && (msg.recipientId === null || msg.recipientId === userId)) ||
+        // Include messages sent to the user (encrypted for them)
+        (msg.senderId !== userId && msg.recipientId === userId)
       );
       
       // Deduplicate by timestamp and sender to avoid showing multiple versions of the same message

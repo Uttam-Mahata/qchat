@@ -379,14 +379,17 @@ export class WebSocketManager {
       // For room messages, we need to send the correct encrypted version to each member
       const members = await storage.getRoomMembers(roomId);
       
+      // Fetch all room messages once (optimization to avoid N+1 queries)
+      const allRoomMessages = await storage.getMessagesByRoom(roomId, 1000);
+      
       for (const member of members) {
         if (member.userId !== message.senderId) {
           // Find the encrypted version for this specific member
-          const allRoomMessages = await storage.getMessagesByRoom(roomId, 1000, member.userId);
+          // Match by sender, timestamp, and recipient to find the correct encrypted version
           const memberMessage = allRoomMessages.find(msg => 
             msg.senderId === message.senderId && 
             msg.timestamp?.getTime() === message.timestamp?.getTime() &&
-            (msg.recipientId === member.userId || msg.senderId === member.userId)
+            msg.recipientId === member.userId
           );
           
           if (memberMessage) {
