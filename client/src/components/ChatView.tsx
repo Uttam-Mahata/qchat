@@ -40,7 +40,7 @@ export function ChatView({
     const client = wsClient.current;
 
     // Handle incoming messages
-    const unsubscribe = client.onMessage((message: WSMessage) => {
+    const unsubscribe = client.onMessage(async (message: WSMessage) => {
       if (message.type === 'message') {
         const { data } = message;
         // Only add message if it's for this chat
@@ -48,13 +48,23 @@ export function ChatView({
           (recipientId && data.senderId === recipientId) ||
           (roomId && data.roomId === roomId)
         ) {
+          // Decrypt the message content
+          let decryptedContent = '[Encrypted Message]';
+          try {
+            const keypair = getStoredKeyPair();
+            if (keypair?.secretKey) {
+              const { apiClient } = await import('@/lib/api');
+              const decrypted = await apiClient.decryptMessage(data.id, keypair.secretKey);
+              decryptedContent = decrypted.content;
+            }
+          } catch (error) {
+            console.error('Failed to decrypt message:', error);
+            decryptedContent = '[Failed to decrypt]';
+          }
+
           const newMessage: Message = {
             id: data.id,
-            // TODO: Decrypt content with user's private key
-            // For now, showing placeholder since encryption is not fully implemented client-side
-            content: data.encryptedContent.includes('demo') 
-              ? data.encryptedContent 
-              : '[Encrypted Message - Decryption pending]',
+            content: decryptedContent,
             timestamp: new Date(data.timestamp).toLocaleTimeString([], { 
               hour: '2-digit', 
               minute: '2-digit' 
@@ -96,12 +106,12 @@ export function ChatView({
     };
   }, [recipientId, roomId]);
 
-  const handleSendMessage = (content: string) => {
+  const handleSendMessage = async (content: string) => {
     const client = wsClient.current;
-    const keypair = getStoredKeyPair();
+    const userId = localStorage.getItem('userId');
 
-    if (!client.isConnected()) {
-      console.error('WebSocket not connected');
+    if (!userId) {
+      console.error('User not authenticated');
       return;
     }
 
@@ -114,15 +124,21 @@ export function ChatView({
     };
     setMessages(prev => [...prev, tempMessage]);
 
-    // TODO: Encrypt content with recipient's public key before sending
-    // For now, sending plaintext with a marker to indicate it's demo data
-    // In production, this should use the recipient's public key from the API
-    // and encrypt using ML-KEM encapsulation + symmetric encryption
-    client.sendMessage(recipientId || null, roomId || null, content, {
-      encryptedContent: `demo:${content}`, // Marked as demo to distinguish from real encrypted data
-      encapsulatedKey: '',
-      nonce: '',
-    });
+    try {
+      // Use REST API to send and encrypt the message
+      // The server will handle encryption and broadcast via WebSocket
+      const { apiClient } = await import('@/lib/api');
+      await apiClient.sendMessage(
+        userId,
+        content,
+        recipientId || undefined,
+        roomId || undefined
+      );
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Remove the optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
+    }
   };
 
   const handleTyping = (isTyping: boolean) => {

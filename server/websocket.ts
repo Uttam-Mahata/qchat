@@ -10,7 +10,7 @@ import { storage } from './storage';
 import type { Message } from '@shared/schema';
 
 export interface WSMessage {
-  type: 'message' | 'typing' | 'read' | 'key-exchange' | 'document' | 'call-signal';
+  type: 'message' | 'typing' | 'read' | 'key-exchange' | 'document' | 'call-signal' | 'authenticate';
   data: any;
 }
 
@@ -63,6 +63,10 @@ export class WebSocketManager {
 
   private async handleMessage(ws: AuthenticatedWebSocket, message: WSMessage) {
     switch (message.type) {
+      case 'authenticate':
+        this.handleAuthenticate(ws, message.data);
+        break;
+      
       case 'message':
         await this.handleChatMessage(ws, message.data);
         break;
@@ -92,6 +96,31 @@ export class WebSocketManager {
           type: 'error', 
           error: 'Unknown message type' 
         }));
+    }
+  }
+
+  private async handleAuthenticate(ws: AuthenticatedWebSocket, data: any) {
+    const { userId, username } = data;
+    
+    if (!userId || !username) {
+      ws.send(JSON.stringify({ type: 'error', error: 'userId and username required for authentication' }));
+      return;
+    }
+    
+    // Validate user exists in database
+    try {
+      const user = await storage.getUser(userId);
+      if (!user || user.username !== username) {
+        ws.send(JSON.stringify({ type: 'error', error: 'Invalid user credentials' }));
+        return;
+      }
+      
+      // Register the client
+      this.registerClient(userId, username, ws);
+      console.log(`WebSocket authenticated: ${username} (${userId})`);
+    } catch (error) {
+      console.error('Authentication error:', error);
+      ws.send(JSON.stringify({ type: 'error', error: 'Authentication failed' }));
     }
   }
 
@@ -334,5 +363,29 @@ export class WebSocketManager {
       type: 'authenticated',
       data: { userId, username }
     }));
+  }
+
+  /**
+   * Broadcast a message to relevant recipients (called from REST API)
+   */
+  public async broadcastMessage(message: Message, recipientId?: string, roomId?: string) {
+    if (recipientId) {
+      // Send to specific recipient
+      this.sendToUser(recipientId, {
+        type: 'message',
+        data: message
+      });
+    } else if (roomId) {
+      // Send to all room members
+      const members = await storage.getRoomMembers(roomId);
+      members.forEach(member => {
+        if (member.userId !== message.senderId) {
+          this.sendToUser(member.userId, {
+            type: 'message',
+            data: message
+          });
+        }
+      });
+    }
   }
 }

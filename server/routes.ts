@@ -171,6 +171,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send encrypted message (REST API alternative to WebSocket)
+  app.post("/api/messages", async (req, res) => {
+    try {
+      const { senderId, recipientId, roomId, content, recipientPublicKey } = req.body;
+
+      if (!senderId || !content) {
+        return res.status(400).json({ error: "senderId and content required" });
+      }
+
+      if (!recipientId && !roomId) {
+        return res.status(400).json({ error: "Either recipientId or roomId required" });
+      }
+
+      // Get recipient public key if not provided
+      let publicKey: Uint8Array;
+      if (recipientPublicKey) {
+        publicKey = decodeBase64(recipientPublicKey);
+      } else if (recipientId) {
+        const recipient = await storage.getUser(recipientId);
+        if (!recipient?.publicKey) {
+          return res.status(400).json({ error: "Recipient public key not found" });
+        }
+        publicKey = decodeBase64(recipient.publicKey);
+      } else {
+        // For room messages, we'd need to encrypt for each member
+        // For now, return error
+        return res.status(400).json({ error: "Room message encryption not yet implemented via REST API. Use WebSocket." });
+      }
+
+      // Encrypt message content
+      const contentBuffer = Buffer.from(content, 'utf-8');
+      const encrypted = encryptData(contentBuffer, publicKey);
+
+      // Store message
+      const message = await storage.createMessage({
+        senderId,
+        recipientId: recipientId || null,
+        roomId: roomId || null,
+        encryptedContent: encodeBase64(encrypted.ciphertext),
+        encapsulatedKey: encodeBase64(encrypted.encapsulatedKey),
+        nonce: encodeBase64(encrypted.nonce),
+      });
+
+      // Notify via WebSocket if available
+      wsManager.broadcastMessage(message, recipientId, roomId);
+
+      res.json(message);
+    } catch (error) {
+      console.error("Send message error:", error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // Decrypt message endpoint (requires secret key)
+  app.post("/api/messages/:id/decrypt", async (req, res) => {
+    try {
+      const { secretKey } = req.body;
+      
+      if (!secretKey) {
+        return res.status(400).json({ error: "Secret key required" });
+      }
+
+      // Get the message from storage
+      const message = await storage.getMessage(req.params.id);
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      const encrypted = {
+        ciphertext: decodeBase64(message.encryptedContent),
+        encapsulatedKey: decodeBase64(message.encapsulatedKey),
+        nonce: decodeBase64(message.nonce),
+      };
+
+      const decrypted = decryptData(encrypted, decodeBase64(secretKey));
+      const contentString = Buffer.from(decrypted).toString('utf-8');
+      
+      res.json({
+        id: message.id,
+        content: contentString,
+        timestamp: message.timestamp,
+        senderId: message.senderId,
+      });
+    } catch (error) {
+      console.error("Decrypt message error:", error);
+      res.status(500).json({ error: "Failed to decrypt message" });
+    }
+  });
+
   // Upload document
   app.post("/api/documents", async (req, res) => {
     try {
