@@ -10,7 +10,7 @@ import { storage } from './storage';
 import type { Message } from '@shared/schema';
 
 export interface WSMessage {
-  type: 'message' | 'typing' | 'read' | 'key-exchange' | 'document' | 'call-signal';
+  type: 'message' | 'typing' | 'read' | 'key-exchange' | 'document' | 'call-signal' | 'authenticate';
   data: any;
 }
 
@@ -63,6 +63,10 @@ export class WebSocketManager {
 
   private async handleMessage(ws: AuthenticatedWebSocket, message: WSMessage) {
     switch (message.type) {
+      case 'authenticate':
+        this.handleAuthenticate(ws, message.data);
+        break;
+      
       case 'message':
         await this.handleChatMessage(ws, message.data);
         break;
@@ -93,6 +97,19 @@ export class WebSocketManager {
           error: 'Unknown message type' 
         }));
     }
+  }
+
+  private handleAuthenticate(ws: AuthenticatedWebSocket, data: any) {
+    const { userId, username } = data;
+    
+    if (!userId || !username) {
+      ws.send(JSON.stringify({ type: 'error', error: 'userId and username required for authentication' }));
+      return;
+    }
+    
+    // Register the client
+    this.registerClient(userId, username, ws);
+    console.log(`WebSocket authenticated: ${username} (${userId})`);
   }
 
   private async handleChatMessage(ws: AuthenticatedWebSocket, data: any) {
