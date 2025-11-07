@@ -26,6 +26,7 @@ export const messages = pgTable("messages", {
 export const rooms = pgTable("rooms", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  code: varchar("code", { length: 8 }).notNull().unique(),
   isGroup: boolean("is_group").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });

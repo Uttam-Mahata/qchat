@@ -132,6 +132,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get room by code
+  app.get("/api/rooms/code/:code", async (req, res) => {
+    try {
+      const room = await storage.getRoomByCode(req.params.code);
+      if (!room) {
+        return res.status(404).json({ error: "Room not found" });
+      }
+      res.json(room);
+    } catch (error) {
+      console.error("Get room by code error:", error);
+      res.status(500).json({ error: "Failed to get room" });
+    }
+  });
+
+  // Join room with code
+  app.post("/api/rooms/join", async (req, res) => {
+    try {
+      const { code, userId, publicKey } = req.body;
+      
+      if (!code || !userId) {
+        return res.status(400).json({ error: "code and userId required" });
+      }
+
+      const room = await storage.getRoomByCode(code);
+      if (!room) {
+        return res.status(404).json({ error: "Room not found" });
+      }
+
+      // Check if user is already a member
+      const members = await storage.getRoomMembers(room.id);
+      const isMember = members.some(member => member.userId === userId);
+      
+      if (isMember) {
+        return res.status(409).json({ error: "User is already a member of this room" });
+      }
+
+      // Add user to room
+      const member = await storage.addRoomMember(room.id, userId, publicKey);
+      
+      res.json({ room, member });
+    } catch (error) {
+      console.error("Join room error:", error);
+      res.status(500).json({ error: "Failed to join room" });
+    }
+  });
+
   // Get user's rooms
   app.get("/api/users/:userId/rooms", async (req, res) => {
     try {
