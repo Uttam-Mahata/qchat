@@ -375,17 +375,36 @@ export class WebSocketManager {
         type: 'message',
         data: message
       });
-    } else if (roomId) {
-      // Send to all room members
+    } else if (roomId && message.timestamp) {
+      // For room messages, we need to send the correct encrypted version to each member
       const members = await storage.getRoomMembers(roomId);
-      members.forEach(member => {
+      
+      // Fetch recent room messages within a 5-second window (optimization to avoid fetching too many)
+      const recentTimeThreshold = new Date(message.timestamp.getTime() - 5000);
+      const allRoomMessages = await storage.getMessagesByRoom(roomId, 100);
+      const recentMessages = allRoomMessages.filter(msg => 
+        msg.timestamp && msg.timestamp >= recentTimeThreshold
+      );
+      
+      for (const member of members) {
         if (member.userId !== message.senderId) {
-          this.sendToUser(member.userId, {
-            type: 'message',
-            data: message
-          });
+          // Find the encrypted version for this specific member
+          // Match by sender, timestamp, and recipient to find the correct encrypted version
+          const memberMessage = recentMessages.find(msg => 
+            msg.senderId === message.senderId && 
+            msg.timestamp && message.timestamp &&
+            Math.abs(msg.timestamp.getTime() - message.timestamp.getTime()) < 1000 && // Within 1 second
+            msg.recipientId === member.userId
+          );
+          
+          if (memberMessage) {
+            this.sendToUser(member.userId, {
+              type: 'message',
+              data: memberMessage
+            });
+          }
         }
-      });
+      }
     }
   }
 }

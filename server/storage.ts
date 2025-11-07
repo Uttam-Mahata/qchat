@@ -27,14 +27,16 @@ function generateRoomCode(): string {
 export interface IStorage {
   // User methods
   getUser(id: string): Promise<User | undefined>;
+  getUsers(ids: string[]): Promise<User[]>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserPublicKey(id: string, publicKey: string): Promise<void>;
   
   // Message methods
   createMessage(message: InsertMessage): Promise<Message>;
+  createMessages(messages: InsertMessage[]): Promise<Message[]>;
   getMessage(id: string): Promise<Message | undefined>;
-  getMessagesByRoom(roomId: string, limit?: number): Promise<Message[]>;
+  getMessagesByRoom(roomId: string, limit?: number, userId?: string): Promise<Message[]>;
   getMessagesBetweenUsers(userId1: string, userId2: string, limit?: number): Promise<Message[]>;
   markMessageAsRead(messageId: string): Promise<void>;
   
@@ -71,6 +73,17 @@ export class MemStorage implements IStorage {
   // User methods
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
+  }
+
+  async getUsers(ids: string[]): Promise<User[]> {
+    const users: User[] = [];
+    for (const id of ids) {
+      const user = this.users.get(id);
+      if (user) {
+        users.push(user);
+      }
+    }
+    return users;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -114,19 +127,67 @@ export class MemStorage implements IStorage {
     return message;
   }
 
+  async createMessages(insertMessages: InsertMessage[]): Promise<Message[]> {
+    const messages: Message[] = [];
+    const baseTimestamp = new Date();
+    
+    for (let i = 0; i < insertMessages.length; i++) {
+      const insertMessage = insertMessages[i];
+      const id = randomUUID();
+      // Use the same base timestamp with microsecond offsets to maintain order
+      const timestamp = new Date(baseTimestamp.getTime() + i);
+      
+      const message: Message = {
+        ...insertMessage,
+        id,
+        recipientId: insertMessage.recipientId || null,
+        roomId: insertMessage.roomId || null,
+        timestamp,
+        isRead: false,
+      };
+      this.messages.set(id, message);
+      messages.push(message);
+    }
+    return messages;
+  }
+
   async getMessage(id: string): Promise<Message | undefined> {
     return this.messages.get(id);
   }
 
-  async getMessagesByRoom(roomId: string, limit: number = 100): Promise<Message[]> {
-    return Array.from(this.messages.values())
+  async getMessagesByRoom(roomId: string, limit: number = 100, userId?: string): Promise<Message[]> {
+    const allMessages = Array.from(this.messages.values())
       .filter(msg => msg.roomId === roomId)
       .sort((a, b) => {
         const timeA = a.timestamp ? a.timestamp.getTime() : 0;
         const timeB = b.timestamp ? b.timestamp.getTime() : 0;
         return timeB - timeA;
-      })
-      .slice(0, limit);
+      });
+
+    // If userId is provided, filter to only include messages encrypted for that user
+    if (userId) {
+      const userMessages = allMessages.filter(msg => 
+        // Include messages sent by the user (their own encrypted version)
+        (msg.senderId === userId && (msg.recipientId === null || msg.recipientId === userId)) ||
+        // Include messages sent to the user (encrypted for them)
+        (msg.senderId !== userId && msg.recipientId === userId)
+      );
+      
+      // Deduplicate by timestamp and sender to avoid showing multiple versions of the same message
+      const seen = new Set<string>();
+      const deduplicated = userMessages.filter(msg => {
+        const key = `${msg.senderId}-${msg.timestamp?.getTime()}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+      
+      return deduplicated.slice(0, limit);
+    }
+
+    return allMessages.slice(0, limit);
   }
 
   async getMessagesBetweenUsers(userId1: string, userId2: string, limit: number = 100): Promise<Message[]> {
