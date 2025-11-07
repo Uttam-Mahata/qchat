@@ -154,6 +154,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add member to room
+  app.post("/api/rooms/:roomId/members", async (req, res) => {
+    try {
+      const { userId, publicKey } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId required" });
+      }
+      
+      const member = await storage.addRoomMember(req.params.roomId, userId, publicKey);
+      res.json(member);
+    } catch (error) {
+      console.error("Add room member error:", error);
+      res.status(500).json({ error: "Failed to add room member" });
+    }
+  });
+
   // Get room messages
   app.get("/api/rooms/:roomId/messages", async (req, res) => {
     try {
