@@ -5,113 +5,12 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { ChatView } from "@/components/ChatView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getWebSocketClient } from "@/lib/websocket";
-
-const mockChats = [
-  {
-    id: '1',
-    name: 'Alice Chen',
-    lastMessage: 'The quantum encryption is working perfectly!',
-    timestamp: '10:34 AM',
-    unreadCount: 3,
-    status: 'online' as const,
-  },
-  {
-    id: '2',
-    name: 'Bob Smith',
-    lastMessage: 'Thanks for the update on the ML-KEM implementation',
-    timestamp: 'Yesterday',
-    status: 'away' as const,
-  },
-  {
-    id: '3',
-    name: 'Charlie Davis',
-    lastMessage: 'See you tomorrow!',
-    timestamp: '2 days ago',
-    status: 'offline' as const,
-  },
-  {
-    id: '4',
-    name: 'Engineering Team',
-    lastMessage: 'The new security features are ready for testing',
-    timestamp: '3 days ago',
-    unreadCount: 1,
-    status: 'online' as const,
-  },
-];
-
-const mockMessages: Record<string, any[]> = {
-  '1': [
-    {
-      id: '1',
-      content: 'Hey! Just wanted to let you know the quantum encryption is working perfectly.',
-      timestamp: '10:32 AM',
-      isSent: false,
-      senderName: 'Alice',
-    },
-    {
-      id: '2',
-      content: "That's great! The ML-KEM handshake completed successfully.",
-      timestamp: '10:33 AM',
-      isSent: true,
-    },
-    {
-      id: '3',
-      content: 'Perfect. All our messages are now quantum-resistant 🔒',
-      timestamp: '10:34 AM',
-      isSent: false,
-      senderName: 'Alice',
-    },
-  ],
-  '2': [
-    {
-      id: '1',
-      content: 'The implementation looks solid. Great work on the cryptography layer!',
-      timestamp: 'Yesterday, 2:15 PM',
-      isSent: false,
-      senderName: 'Bob',
-    },
-    {
-      id: '2',
-      content: 'Thanks! The Double Ratchet integration was the trickiest part.',
-      timestamp: 'Yesterday, 2:17 PM',
-      isSent: true,
-    },
-  ],
-  '3': [
-    {
-      id: '1',
-      content: 'Are we still meeting tomorrow?',
-      timestamp: '2 days ago, 5:30 PM',
-      isSent: false,
-      senderName: 'Charlie',
-    },
-    {
-      id: '2',
-      content: 'Yes, 10 AM works for me!',
-      timestamp: '2 days ago, 5:32 PM',
-      isSent: true,
-    },
-    {
-      id: '3',
-      content: 'Perfect, see you then!',
-      timestamp: '2 days ago, 5:33 PM',
-      isSent: false,
-      senderName: 'Charlie',
-    },
-  ],
-  '4': [
-    {
-      id: '1',
-      content: 'The security audit results are in - all tests passed!',
-      timestamp: '3 days ago, 11:20 AM',
-      isSent: false,
-      senderName: 'Engineering Team',
-    },
-  ],
-};
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MessageSquare } from "lucide-react";
 
 export default function Home() {
-  const [activeChat, setActiveChat] = useState('1');
+  const [activeChat, setActiveChat] = useState<string | null>(null);
+  const [chats, setChats] = useState<any[]>([]);
 
   useEffect(() => {
     // Authenticate WebSocket connection
@@ -121,10 +20,33 @@ export default function Home() {
     if (userId && username) {
       const wsClient = getWebSocketClient();
       wsClient.authenticate(userId, username);
+
+      // Fetch user's rooms/chats from the API
+      fetch(`/api/users/${userId}/rooms`)
+        .then(res => res.json())
+        .then(rooms => {
+          // Transform rooms into chat format
+          const chatList = rooms.map((room: any) => ({
+            id: room.id,
+            name: room.name,
+            lastMessage: '',
+            timestamp: new Date(room.createdAt).toLocaleDateString(),
+            status: 'offline' as const,
+          }));
+          setChats(chatList);
+          
+          // Set first chat as active if available
+          if (chatList.length > 0) {
+            setActiveChat(chatList[0].id);
+          }
+        })
+        .catch(error => {
+          console.error('Failed to fetch rooms:', error);
+        });
     }
   }, []);
 
-  const activeChatData = mockChats.find(chat => chat.id === activeChat);
+  const activeChatData = chats.find(chat => chat.id === activeChat);
 
   const style = {
     "--sidebar-width": "20rem",
@@ -134,30 +56,47 @@ export default function Home() {
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
-        <AppSidebar />
+        <div className="hidden lg:block">
+          <AppSidebar />
+        </div>
         <div className="flex flex-1 overflow-hidden">
           <ChatPanel
-            chats={mockChats}
-            activeChat={activeChat}
+            chats={chats}
+            activeChat={activeChat || undefined}
             onChatSelect={setActiveChat}
           />
           <div className="flex flex-col flex-1">
-            <header className="flex items-center justify-between p-2 border-b border-border bg-background">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <header className="flex items-center justify-between p-2 sm:p-3 border-b border-border bg-background">
+              <SidebarTrigger data-testid="button-sidebar-toggle" className="lg:hidden" />
+              <div className="hidden lg:block" />
               <ThemeToggle />
             </header>
             <main className="flex-1 overflow-hidden">
-              {activeChatData && (
+              {activeChatData ? (
                 <ChatView
                   chatName={activeChatData.name}
                   chatId={activeChatData.id}
-                  // NOTE: Using chat ID as recipient ID for demo purposes
-                  // In production, chats would have proper user IDs from the database
-                  // and this would map to the actual recipient's user ID
-                  recipientId={`user-${activeChatData.id}`}
+                  roomId={activeChatData.id}
                   status={activeChatData.status}
-                  initialMessages={mockMessages[activeChat] || []}
+                  initialMessages={[]}
                 />
+              ) : (
+                <div className="flex items-center justify-center h-full p-4">
+                  <Card className="max-w-md w-full">
+                    <CardHeader className="text-center">
+                      <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                        <MessageSquare className="w-6 h-6 text-primary" />
+                      </div>
+                      <CardTitle className="text-lg sm:text-xl">No Conversations Yet</CardTitle>
+                      <CardDescription className="text-sm">
+                        Create a new room or wait for someone to start a conversation with you.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="text-center text-xs sm:text-sm text-muted-foreground">
+                      All your messages will be encrypted with quantum-resistant cryptography.
+                    </CardContent>
+                  </Card>
+                </div>
               )}
             </main>
           </div>
