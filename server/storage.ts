@@ -11,6 +11,16 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
+// Generate a unique 8-character room code
+function generateRoomCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
 // modify the interface with any CRUD methods
 // you might need
 
@@ -31,6 +41,7 @@ export interface IStorage {
   // Room methods
   createRoom(room: InsertRoom): Promise<Room>;
   getRoom(id: string): Promise<Room | undefined>;
+  getRoomByCode(code: string): Promise<Room | undefined>;
   getRoomsByUser(userId: string): Promise<Room[]>;
   addRoomMember(roomId: string, userId: string, publicKey?: string): Promise<RoomMember>;
   getRoomMembers(roomId: string): Promise<RoomMember[]>;
@@ -143,9 +154,24 @@ export class MemStorage implements IStorage {
   // Room methods
   async createRoom(insertRoom: InsertRoom): Promise<Room> {
     const id = randomUUID();
+    let code = generateRoomCode();
+    
+    // Ensure code is unique (with retry limit to prevent infinite loops)
+    let retries = 0;
+    const maxRetries = 10;
+    while (Array.from(this.rooms.values()).some(room => room.code === code) && retries < maxRetries) {
+      code = generateRoomCode();
+      retries++;
+    }
+    
+    if (retries >= maxRetries) {
+      throw new Error('Failed to generate unique room code after maximum retries');
+    }
+    
     const room: Room = {
       ...insertRoom,
       id,
+      code,
       isGroup: insertRoom.isGroup || false,
       createdAt: new Date(),
     };
@@ -155,6 +181,12 @@ export class MemStorage implements IStorage {
 
   async getRoom(id: string): Promise<Room | undefined> {
     return this.rooms.get(id);
+  }
+
+  async getRoomByCode(code: string): Promise<Room | undefined> {
+    return Array.from(this.rooms.values()).find(
+      (room) => room.code === code,
+    );
   }
 
   async getRoomsByUser(userId: string): Promise<Room[]> {
