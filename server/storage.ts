@@ -117,14 +117,20 @@ export class MemStorage implements IStorage {
 
   async createMessages(insertMessages: InsertMessage[]): Promise<Message[]> {
     const messages: Message[] = [];
-    for (const insertMessage of insertMessages) {
+    const baseTimestamp = new Date();
+    
+    for (let i = 0; i < insertMessages.length; i++) {
+      const insertMessage = insertMessages[i];
       const id = randomUUID();
+      // Use the same base timestamp with microsecond offsets to maintain order
+      const timestamp = new Date(baseTimestamp.getTime() + i);
+      
       const message: Message = {
         ...insertMessage,
         id,
         recipientId: insertMessage.recipientId || null,
         roomId: insertMessage.roomId || null,
-        timestamp: new Date(),
+        timestamp,
         isRead: false,
       };
       this.messages.set(id, message);

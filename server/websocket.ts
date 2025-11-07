@@ -388,7 +388,8 @@ export class WebSocketManager {
           // Match by sender, timestamp, and recipient to find the correct encrypted version
           const memberMessage = allRoomMessages.find(msg => 
             msg.senderId === message.senderId && 
-            msg.timestamp?.getTime() === message.timestamp?.getTime() &&
+            msg.timestamp && message.timestamp &&
+            msg.timestamp.getTime() === message.timestamp.getTime() &&
             msg.recipientId === member.userId
           );
           
