@@ -99,7 +99,7 @@ export class WebSocketManager {
     }
   }
 
-  private handleAuthenticate(ws: AuthenticatedWebSocket, data: any) {
+  private async handleAuthenticate(ws: AuthenticatedWebSocket, data: any) {
     const { userId, username } = data;
     
     if (!userId || !username) {
@@ -107,9 +107,21 @@ export class WebSocketManager {
       return;
     }
     
-    // Register the client
-    this.registerClient(userId, username, ws);
-    console.log(`WebSocket authenticated: ${username} (${userId})`);
+    // Validate user exists in database
+    try {
+      const user = await storage.getUser(userId);
+      if (!user || user.username !== username) {
+        ws.send(JSON.stringify({ type: 'error', error: 'Invalid user credentials' }));
+        return;
+      }
+      
+      // Register the client
+      this.registerClient(userId, username, ws);
+      console.log(`WebSocket authenticated: ${username} (${userId})`);
+    } catch (error) {
+      console.error('Authentication error:', error);
+      ws.send(JSON.stringify({ type: 'error', error: 'Authentication failed' }));
+    }
   }
 
   private async handleChatMessage(ws: AuthenticatedWebSocket, data: any) {
