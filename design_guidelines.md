@@ -2,6 +2,7 @@
 
 ## Design Approach
 
+
 **Hybrid Approach**: Material Design 3 principles combined with Signal/Telegram's security-focused aesthetics. This chat application prioritizes trust, clarity, and efficiency while maintaining a modern, approachable feel.
 
 **Core Design Principles**:
