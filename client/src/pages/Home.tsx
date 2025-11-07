@@ -12,16 +12,9 @@ export default function Home() {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [chats, setChats] = useState<any[]>([]);
 
-  useEffect(() => {
-    // Authenticate WebSocket connection
+  const fetchUserRooms = () => {
     const userId = localStorage.getItem('userId');
-    const username = localStorage.getItem('username');
-    
-    if (userId && username) {
-      const wsClient = getWebSocketClient();
-      wsClient.authenticate(userId, username);
-
-      // Fetch user's rooms/chats from the API
+    if (userId) {
       fetch(`/api/users/${userId}/rooms`)
         .then(res => res.json())
         .then(rooms => {
@@ -35,14 +28,28 @@ export default function Home() {
           }));
           setChats(chatList);
           
-          // Set first chat as active if available
-          if (chatList.length > 0) {
+          // Set first chat as active if available and no active chat
+          if (chatList.length > 0 && !activeChat) {
             setActiveChat(chatList[0].id);
           }
         })
         .catch(error => {
           console.error('Failed to fetch rooms:', error);
         });
+    }
+  };
+
+  useEffect(() => {
+    // Authenticate WebSocket connection
+    const userId = localStorage.getItem('userId');
+    const username = localStorage.getItem('username');
+    
+    if (userId && username) {
+      const wsClient = getWebSocketClient();
+      wsClient.authenticate(userId, username);
+
+      // Fetch user's rooms/chats from the API
+      fetchUserRooms();
     }
   }, []);
 
@@ -64,6 +71,7 @@ export default function Home() {
             chats={chats}
             activeChat={activeChat || undefined}
             onChatSelect={setActiveChat}
+            onRoomUpdate={fetchUserRooms}
           />
           <div className="flex flex-col flex-1">
             <header className="flex items-center justify-between p-2 sm:p-3 border-b border-border bg-background">
