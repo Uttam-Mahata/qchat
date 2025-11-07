@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Shield, Lock } from "lucide-react";
 import { apiClient } from "@/lib/api";
-import { storeKeyPair } from "@/lib/crypto";
+import { storeKeyPair, getStoredKeyPair, generateKeyPair } from "@/lib/crypto";
 import { useToast } from "@/hooks/use-toast";
 
 interface AuthPageProps {
@@ -42,8 +42,43 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
         localStorage.setItem('userId', user.id);
         localStorage.setItem('username', user.username);
         
-        // If user has a keypair, we should retrieve the secret key
-        // In production, this would be handled more securely
+        // Check if user has a stored keypair locally
+        let storedKeypair = getStoredKeyPair();
+        
+        // If no keypair is stored locally, generate a new one
+        if (!storedKeypair) {
+          toast({
+            title: "Generating encryption keys",
+            description: "Setting up quantum-safe encryption for your account...",
+          });
+          
+          const newKeypair = await generateKeyPair();
+          
+          // Update user's public key on the server
+          try {
+            const response = await fetch(`/api/users/${user.id}/public-key`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ publicKey: newKeypair.publicKey }),
+            });
+            
+            if (!response.ok) {
+              throw new Error('Failed to update public key');
+            }
+            
+            // Store the new keypair locally
+            storeKeyPair(newKeypair);
+            storedKeypair = newKeypair;
+          } catch (error) {
+            console.error('Error updating public key:', error);
+            toast({
+              title: "Key update failed",
+              description: "Could not update encryption keys. Please try again.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
         
         toast({
           title: "Login successful",
