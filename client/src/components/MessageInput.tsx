@@ -119,8 +119,10 @@ export function MessageInput({ onSend, onTyping, placeholder = "Message (End-to-
         }
         
         const members = await roomResponse.json();
-        // For now, use the first member's public key
-        // In production, you'd encrypt for all members
+        // SECURITY NOTE: Current implementation only encrypts for one recipient
+        // For group chats, files should be encrypted for all members or use a
+        // different encryption strategy (e.g., symmetric key encrypted per-member)
+        // TODO: Implement proper group encryption for file uploads
         const recipient = members.find((m: any) => m.userId !== userId);
         if (!recipient?.publicKey) {
           throw new Error('No recipient found with public key');
