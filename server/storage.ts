@@ -23,6 +23,7 @@ export interface IStorage {
   
   // Message methods
   createMessage(message: InsertMessage): Promise<Message>;
+  getMessage(id: string): Promise<Message | undefined>;
   getMessagesByRoom(roomId: string, limit?: number): Promise<Message[]>;
   getMessagesBetweenUsers(userId1: string, userId2: string, limit?: number): Promise<Message[]>;
   markMessageAsRead(messageId: string): Promise<void>;
@@ -100,6 +101,10 @@ export class MemStorage implements IStorage {
     };
     this.messages.set(id, message);
     return message;
+  }
+
+  async getMessage(id: string): Promise<Message | undefined> {
+    return this.messages.get(id);
   }
 
   async getMessagesByRoom(roomId: string, limit: number = 100): Promise<Message[]> {

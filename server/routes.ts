@@ -234,14 +234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get the message from storage
-      // Since we're using in-memory storage, we need to access it directly
-      // In production, this would be a database query
-      const messages = (storage as any).messages as Map<string, any>;
-      if (!messages) {
-        return res.status(500).json({ error: "Storage not available" });
-      }
-      
-      const message = messages.get(req.params.id);
+      const message = await storage.getMessage(req.params.id);
       if (!message) {
         return res.status(404).json({ error: "Message not found" });
       }
