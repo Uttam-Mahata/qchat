@@ -143,6 +143,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get room members
+  app.get("/api/rooms/:roomId/members", async (req, res) => {
+    try {
+      const members = await storage.getRoomMembers(req.params.roomId);
+      res.json(members);
+    } catch (error) {
+      console.error("Get room members error:", error);
+      res.status(500).json({ error: "Failed to get room members" });
+    }
+  });
+
+  // Add member to room
+  app.post("/api/rooms/:roomId/members", async (req, res) => {
+    try {
+      const { userId, publicKey } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId required" });
+      }
+      
+      const member = await storage.addRoomMember(req.params.roomId, userId, publicKey);
+      res.json(member);
+    } catch (error) {
+      console.error("Add room member error:", error);
+      res.status(500).json({ error: "Failed to add room member" });
+    }
+  });
+
   // Get room messages
   app.get("/api/rooms/:roomId/messages", async (req, res) => {
     try {
@@ -267,6 +294,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!name || !uploaderId || !content || !recipientPublicKey) {
         return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Validate file size (10MB limit)
+      const sizeNum = parseInt(size || '0');
+      if (sizeNum > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: "File size exceeds 10MB limit" });
+      }
+
+      // Validate MIME type (server-side validation)
+      const allowedMimeTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+      
+      if (mimeType && !allowedMimeTypes.includes(mimeType)) {
+        return res.status(400).json({ error: "File type not allowed" });
       }
 
       // Encrypt document with quantum-resistant encryption
