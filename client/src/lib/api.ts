@@ -12,6 +12,7 @@ export interface User {
 export interface Room {
   id: string;
   name: string;
+  code: string;
   isGroup: boolean;
   createdAt: Date;
 }
@@ -99,6 +100,32 @@ class APIClient {
 
     if (!response.ok) {
       throw new Error('Failed to create room');
+    }
+
+    return response.json();
+  }
+
+  async getRoomByCode(code: string): Promise<Room> {
+    const response = await fetch(`${this.baseUrl}/rooms/code/${code}`);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch room');
+    }
+
+    return response.json();
+  }
+
+  async joinRoomWithCode(code: string, userId: string, publicKey?: string): Promise<{ room: Room; member: any }> {
+    const response = await fetch(`${this.baseUrl}/rooms/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, userId, publicKey }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to join room');
     }
 
     return response.json();
