@@ -275,11 +275,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Sender public key not found" });
         }
 
+        // Prepare all messages to be created in batch
+        const messagesToCreate: any[] = [];
+        
         // Create a message encrypted for the sender (to store as the primary message)
         const senderPublicKey = decodeBase64(sender.publicKey);
         const senderEncrypted = encryptData(contentBuffer, senderPublicKey);
         
-        message = await storage.createMessage({
+        messagesToCreate.push({
           senderId,
           recipientId: null,
           roomId,
@@ -296,7 +299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const memberPublicKey = decodeBase64(memberUser.publicKey);
               const memberEncrypted = encryptData(contentBuffer, memberPublicKey);
               
-              await storage.createMessage({
+              messagesToCreate.push({
                 senderId,
                 recipientId: member.userId,
                 roomId,
@@ -307,6 +310,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
+
+        // Create all messages in batch
+        const createdMessages = await storage.createMessages(messagesToCreate);
+        message = createdMessages[0]; // First message is the sender's version
 
         // Broadcast to room members via WebSocket
         wsManager.broadcastMessage(message, undefined, roomId);
