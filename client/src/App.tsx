@@ -7,6 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/Home";
 import { AuthPage } from "@/pages/AuthPage";
 import { SecurityCenter } from "@/pages/SecurityCenter";
+import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
+import Documents from "@/pages/Documents";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -53,6 +56,9 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/security" component={SecurityCenter} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/documents" component={Documents} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,4 +1,4 @@
-import { MessageSquare, Users, Settings, ShieldCheck } from "lucide-react";
+import { MessageSquare, Users, Settings, ShieldCheck, FileText, UserCircle } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,9 +16,14 @@ const menuItems = [
     url: "/",
   },
   {
-    title: "Contacts",
-    icon: Users,
-    url: "/contacts",
+    title: "Profile",
+    icon: UserCircle,
+    url: "/profile",
+  },
+  {
+    title: "Documents",
+    icon: FileText,
+    url: "/documents",
   },
   {
     title: "Security",

@@ -6,7 +6,7 @@
 
 export interface WSMessage {
   type: 'message' | 'typing' | 'read' | 'key-exchange' | 'document' | 'call-signal' | 
-        'authenticated' | 'message-sent' | 'user-status' | 'error' | 'document-uploaded';
+        'authenticate' | 'authenticated' | 'message-sent' | 'user-status' | 'error' | 'document-uploaded';
   data?: any;
   error?: string;
 }
@@ -88,7 +88,11 @@ export class WebSocketClient {
   public authenticate(userId: string, username: string) {
     this.userId = userId;
     this.username = username;
-    // Authentication happens via the connection - server validates session
+    // Send authentication message to server
+    this.send({
+      type: 'authenticate',
+      data: { userId, username }
+    });
   }
 
   public onMessage(handler: MessageHandler) {
