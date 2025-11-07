@@ -156,9 +156,16 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     let code = generateRoomCode();
     
-    // Ensure code is unique
-    while (Array.from(this.rooms.values()).some(room => room.code === code)) {
+    // Ensure code is unique (with retry limit to prevent infinite loops)
+    let retries = 0;
+    const maxRetries = 10;
+    while (Array.from(this.rooms.values()).some(room => room.code === code) && retries < maxRetries) {
       code = generateRoomCode();
+      retries++;
+    }
+    
+    if (retries >= maxRetries) {
+      throw new Error('Failed to generate unique room code after maximum retries');
     }
     
     const room: Room = {
