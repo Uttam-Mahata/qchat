@@ -69,6 +69,7 @@ export const insertMessageSchema = createInsertSchema(messages).pick({
 export const insertRoomSchema = createInsertSchema(rooms).pick({
   name: true,
   isGroup: true,
+  // Note: 'code' field is intentionally excluded as it is auto-generated server-side
 });
 
 export const insertDocumentSchema = createInsertSchema(documents).pick({
