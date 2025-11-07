@@ -291,10 +291,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           nonce: encodeBase64(senderEncrypted.nonce),
         });
 
+        // Fetch all member users in batch for better performance
+        const memberUserIds = members.filter(m => m.userId !== senderId).map(m => m.userId);
+        const memberUsers = await storage.getUsers(memberUserIds);
+        const memberUsersMap = new Map(memberUsers.map(u => [u.id, u]));
+
         // Create additional encrypted versions for each member (except sender)
+        const missingPublicKeys: string[] = [];
         for (const member of members) {
           if (member.userId !== senderId) {
-            const memberUser = await storage.getUser(member.userId);
+            const memberUser = memberUsersMap.get(member.userId);
             if (memberUser?.publicKey) {
               const memberPublicKey = decodeBase64(memberUser.publicKey);
               const memberEncrypted = encryptData(contentBuffer, memberPublicKey);
@@ -307,8 +313,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 encapsulatedKey: encodeBase64(memberEncrypted.encapsulatedKey),
                 nonce: encodeBase64(memberEncrypted.nonce),
               });
+            } else {
+              missingPublicKeys.push(member.userId);
             }
           }
+        }
+
+        // Log warning if some members couldn't receive the message
+        if (missingPublicKeys.length > 0) {
+          console.warn(`Message not encrypted for ${missingPublicKeys.length} member(s) due to missing public keys:`, missingPublicKeys);
         }
 
         // Create all messages in batch
