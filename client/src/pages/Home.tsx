@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ChatView } from "@/components/ChatView";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { getWebSocketClient } from "@/lib/websocket";
 
 const mockChats = [
   {
@@ -112,6 +113,17 @@ const mockMessages: Record<string, any[]> = {
 export default function Home() {
   const [activeChat, setActiveChat] = useState('1');
 
+  useEffect(() => {
+    // Authenticate WebSocket connection
+    const userId = localStorage.getItem('userId');
+    const username = localStorage.getItem('username');
+    
+    if (userId && username) {
+      const wsClient = getWebSocketClient();
+      wsClient.authenticate(userId, username);
+    }
+  }, []);
+
   const activeChatData = mockChats.find(chat => chat.id === activeChat);
 
   const style = {
@@ -138,6 +150,11 @@ export default function Home() {
               {activeChatData && (
                 <ChatView
                   chatName={activeChatData.name}
+                  chatId={activeChatData.id}
+                  // NOTE: Using chat ID as recipient ID for demo purposes
+                  // In production, chats would have proper user IDs from the database
+                  // and this would map to the actual recipient's user ID
+                  recipientId={`user-${activeChatData.id}`}
                   status={activeChatData.status}
                   initialMessages={mockMessages[activeChat] || []}
                 />
