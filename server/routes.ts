@@ -220,7 +220,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/rooms/:roomId/messages", async (req, res) => {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-      const messages = await storage.getMessagesByRoom(req.params.roomId, limit);
+      const userId = req.query.userId as string | undefined;
+      const messages = await storage.getMessagesByRoom(req.params.roomId, limit, userId);
       res.json(messages);
     } catch (error) {
       console.error("Get messages error:", error);
@@ -257,38 +258,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Either recipientId or roomId required" });
       }
 
-      // Get recipient public key if not provided
-      let publicKey: Uint8Array;
-      if (recipientPublicKey) {
-        publicKey = decodeBase64(recipientPublicKey);
-      } else if (recipientId) {
-        const recipient = await storage.getUser(recipientId);
-        if (!recipient?.publicKey) {
-          return res.status(400).json({ error: "Recipient public key not found" });
-        }
-        publicKey = decodeBase64(recipient.publicKey);
-      } else {
-        // For room messages, we'd need to encrypt for each member
-        // For now, return error
-        return res.status(400).json({ error: "Room message encryption not yet implemented via REST API. Use WebSocket." });
-      }
-
-      // Encrypt message content
       const contentBuffer = Buffer.from(content, 'utf-8');
-      const encrypted = encryptData(contentBuffer, publicKey);
+      let message: any;
 
-      // Store message
-      const message = await storage.createMessage({
-        senderId,
-        recipientId: recipientId || null,
-        roomId: roomId || null,
-        encryptedContent: encodeBase64(encrypted.ciphertext),
-        encapsulatedKey: encodeBase64(encrypted.encapsulatedKey),
-        nonce: encodeBase64(encrypted.nonce),
-      });
+      // Handle room messages
+      if (roomId) {
+        // Get all room members
+        const members = await storage.getRoomMembers(roomId);
+        if (members.length === 0) {
+          return res.status(400).json({ error: "No members found in room" });
+        }
 
-      // Notify via WebSocket if available
-      wsManager.broadcastMessage(message, recipientId, roomId);
+        // Get sender's user info to encrypt for self
+        const sender = await storage.getUser(senderId);
+        if (!sender?.publicKey) {
+          return res.status(400).json({ error: "Sender public key not found" });
+        }
+
+        // Prepare all messages to be created in batch
+        const messagesToCreate: any[] = [];
+        
+        // Create a message encrypted for the sender (to store as the primary message)
+        const senderPublicKey = decodeBase64(sender.publicKey);
+        const senderEncrypted = encryptData(contentBuffer, senderPublicKey);
+        
+        messagesToCreate.push({
+          senderId,
+          recipientId: null,
+          roomId,
+          encryptedContent: encodeBase64(senderEncrypted.ciphertext),
+          encapsulatedKey: encodeBase64(senderEncrypted.encapsulatedKey),
+          nonce: encodeBase64(senderEncrypted.nonce),
+        });
+
+        // Fetch all member users in batch for better performance
+        const memberUserIds = members.filter(m => m.userId !== senderId).map(m => m.userId);
+        const memberUsers = await storage.getUsers(memberUserIds);
+        const memberUsersMap = new Map(memberUsers.map(u => [u.id, u]));
+
+        // Create additional encrypted versions for each member (except sender)
+        const missingPublicKeys: string[] = [];
+        for (const member of members) {
+          if (member.userId !== senderId) {
+            const memberUser = memberUsersMap.get(member.userId);
+            if (memberUser?.publicKey) {
+              const memberPublicKey = decodeBase64(memberUser.publicKey);
+              const memberEncrypted = encryptData(contentBuffer, memberPublicKey);
+              
+              messagesToCreate.push({
+                senderId,
+                recipientId: member.userId,
+                roomId,
+                encryptedContent: encodeBase64(memberEncrypted.ciphertext),
+                encapsulatedKey: encodeBase64(memberEncrypted.encapsulatedKey),
+                nonce: encodeBase64(memberEncrypted.nonce),
+              });
+            } else {
+              missingPublicKeys.push(member.userId);
+            }
+          }
+        }
+
+        // Log warning if some members couldn't receive the message
+        if (missingPublicKeys.length > 0) {
+          console.warn(`Message not encrypted for ${missingPublicKeys.length} member(s) due to missing public keys:`, missingPublicKeys);
+        }
+
+        // Create all messages in batch
+        const createdMessages = await storage.createMessages(messagesToCreate);
+        message = createdMessages[0]; // First message is the sender's version
+
+        // Broadcast to room members via WebSocket
+        wsManager.broadcastMessage(message, undefined, roomId);
+      } else if (recipientId) {
+        // Handle direct messages
+        let publicKey: Uint8Array;
+        if (recipientPublicKey) {
+          publicKey = decodeBase64(recipientPublicKey);
+        } else {
+          const recipient = await storage.getUser(recipientId);
+          if (!recipient?.publicKey) {
+            return res.status(400).json({ error: "Recipient public key not found" });
+          }
+          publicKey = decodeBase64(recipient.publicKey);
+        }
+
+        // Encrypt message content
+        const encrypted = encryptData(contentBuffer, publicKey);
+
+        // Store message
+        message = await storage.createMessage({
+          senderId,
+          recipientId,
+          roomId: null,
+          encryptedContent: encodeBase64(encrypted.ciphertext),
+          encapsulatedKey: encodeBase64(encrypted.encapsulatedKey),
+          nonce: encodeBase64(encrypted.nonce),
+        });
+
+        // Notify via WebSocket if available
+        wsManager.broadcastMessage(message, recipientId, undefined);
+      }
 
       res.json(message);
     } catch (error) {
