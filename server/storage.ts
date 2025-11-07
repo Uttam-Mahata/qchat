@@ -34,7 +34,7 @@ export interface IStorage {
   // Message methods
   createMessage(message: InsertMessage): Promise<Message>;
   getMessage(id: string): Promise<Message | undefined>;
-  getMessagesByRoom(roomId: string, limit?: number): Promise<Message[]>;
+  getMessagesByRoom(roomId: string, limit?: number, userId?: string): Promise<Message[]>;
   getMessagesBetweenUsers(userId1: string, userId2: string, limit?: number): Promise<Message[]>;
   markMessageAsRead(messageId: string): Promise<void>;
   
@@ -118,15 +118,36 @@ export class MemStorage implements IStorage {
     return this.messages.get(id);
   }
 
-  async getMessagesByRoom(roomId: string, limit: number = 100): Promise<Message[]> {
-    return Array.from(this.messages.values())
+  async getMessagesByRoom(roomId: string, limit: number = 100, userId?: string): Promise<Message[]> {
+    const allMessages = Array.from(this.messages.values())
       .filter(msg => msg.roomId === roomId)
       .sort((a, b) => {
         const timeA = a.timestamp ? a.timestamp.getTime() : 0;
         const timeB = b.timestamp ? b.timestamp.getTime() : 0;
         return timeB - timeA;
-      })
-      .slice(0, limit);
+      });
+
+    // If userId is provided, filter to only include messages encrypted for that user or sent by that user
+    if (userId) {
+      const userMessages = allMessages.filter(msg => 
+        msg.senderId === userId || msg.recipientId === userId || msg.recipientId === null
+      );
+      
+      // Deduplicate by timestamp and sender to avoid showing multiple versions of the same message
+      const seen = new Set<string>();
+      const deduplicated = userMessages.filter(msg => {
+        const key = `${msg.senderId}-${msg.timestamp?.getTime()}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+      
+      return deduplicated.slice(0, limit);
+    }
+
+    return allMessages.slice(0, limit);
   }
 
   async getMessagesBetweenUsers(userId1: string, userId2: string, limit: number = 100): Promise<Message[]> {
