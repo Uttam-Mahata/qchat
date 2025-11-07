@@ -143,6 +143,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get room members
+  app.get("/api/rooms/:roomId/members", async (req, res) => {
+    try {
+      const members = await storage.getRoomMembers(req.params.roomId);
+      res.json(members);
+    } catch (error) {
+      console.error("Get room members error:", error);
+      res.status(500).json({ error: "Failed to get room members" });
+    }
+  });
+
   // Get room messages
   app.get("/api/rooms/:roomId/messages", async (req, res) => {
     try {

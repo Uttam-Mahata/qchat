@@ -156,8 +156,8 @@ export function ChatView({
         recipientId={recipientId}
         status={status} 
       />
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4 max-w-4xl mx-auto">
+      <ScrollArea className="flex-1 p-2 sm:p-4">
+        <div className="space-y-3 sm:space-y-4 max-w-4xl mx-auto">
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
@@ -179,7 +179,7 @@ export function ChatView({
           )}
         </div>
       </ScrollArea>
-      <MessageInput onSend={handleSendMessage} onTyping={handleTyping} />
+      <MessageInput onSend={handleSendMessage} onTyping={handleTyping} roomId={roomId || undefined} />
     </div>
   );
 }
