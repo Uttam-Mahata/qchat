@@ -352,4 +352,28 @@ export class WebSocketManager {
       data: { userId, username }
     }));
   }
+
+  /**
+   * Broadcast a message to relevant recipients (called from REST API)
+   */
+  public async broadcastMessage(message: Message, recipientId?: string, roomId?: string) {
+    if (recipientId) {
+      // Send to specific recipient
+      this.sendToUser(recipientId, {
+        type: 'message',
+        data: message
+      });
+    } else if (roomId) {
+      // Send to all room members
+      const members = await storage.getRoomMembers(roomId);
+      members.forEach(member => {
+        if (member.userId !== message.senderId) {
+          this.sendToUser(member.userId, {
+            type: 'message',
+            data: message
+          });
+        }
+      });
+    }
+  }
 }

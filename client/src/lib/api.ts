@@ -135,6 +135,52 @@ class APIClient {
     return response.json();
   }
 
+  async sendMessage(
+    senderId: string,
+    content: string,
+    recipientId?: string,
+    roomId?: string,
+    recipientPublicKey?: string
+  ): Promise<Message> {
+    const response = await fetch(`${this.baseUrl}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        senderId,
+        content,
+        recipientId,
+        roomId,
+        recipientPublicKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to send message');
+    }
+
+    return response.json();
+  }
+
+  async decryptMessage(messageId: string, secretKey: string): Promise<{
+    id: string;
+    content: string;
+    timestamp: Date;
+    senderId: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/messages/${messageId}/decrypt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secretKey }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to decrypt message');
+    }
+
+    return response.json();
+  }
+
   // Document endpoints
   async uploadDocument(
     name: string,
