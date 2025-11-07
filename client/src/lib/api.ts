@@ -142,8 +142,14 @@ class APIClient {
   }
 
   // Message endpoints
-  async getRoomMessages(roomId: string, limit: number = 100): Promise<Message[]> {
-    const response = await fetch(`${this.baseUrl}/rooms/${roomId}/messages?limit=${limit}`);
+  async getRoomMessages(roomId: string, limit: number = 100, userId?: string): Promise<Message[]> {
+    const url = new URL(`${this.baseUrl}/rooms/${roomId}/messages`, window.location.origin);
+    url.searchParams.append('limit', limit.toString());
+    if (userId) {
+      url.searchParams.append('userId', userId);
+    }
+    
+    const response = await fetch(url.toString());
     
     if (!response.ok) {
       throw new Error('Failed to fetch messages');
