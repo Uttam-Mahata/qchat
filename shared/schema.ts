@@ -1,55 +1,56 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+// SQLite schema - using text for IDs and integer for timestamps
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   publicKey: text("public_key"),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
-export const messages = pgTable("messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  senderId: varchar("sender_id").notNull().references(() => users.id),
-  recipientId: varchar("recipient_id").references(() => users.id),
-  roomId: varchar("room_id"),
+export const messages = sqliteTable("messages", {
+  id: text("id").primaryKey(),
+  senderId: text("sender_id").notNull().references(() => users.id),
+  recipientId: text("recipient_id").references(() => users.id),
+  roomId: text("room_id"),
   encryptedContent: text("encrypted_content").notNull(),
   encapsulatedKey: text("encapsulated_key").notNull(),
   nonce: text("nonce").notNull(),
-  timestamp: timestamp("timestamp").defaultNow(),
-  isRead: boolean("is_read").default(false),
+  timestamp: integer("timestamp", { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  isRead: integer("is_read", { mode: 'boolean' }).default(false),
 });
 
-export const rooms = pgTable("rooms", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const rooms = sqliteTable("rooms", {
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
-  code: varchar("code", { length: 8 }).notNull().unique(),
-  isGroup: boolean("is_group").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
+  code: text("code").notNull().unique(),
+  isGroup: integer("is_group", { mode: 'boolean' }).default(false),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
-export const roomMembers = pgTable("room_members", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  roomId: varchar("room_id").notNull().references(() => rooms.id),
-  userId: varchar("user_id").notNull().references(() => users.id),
+export const roomMembers = sqliteTable("room_members", {
+  id: text("id").primaryKey(),
+  roomId: text("room_id").notNull().references(() => rooms.id),
+  userId: text("user_id").notNull().references(() => users.id),
   publicKey: text("public_key"),
-  joinedAt: timestamp("joined_at").defaultNow(),
+  joinedAt: integer("joined_at", { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
-export const documents = pgTable("documents", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const documents = sqliteTable("documents", {
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
-  uploaderId: varchar("uploader_id").notNull().references(() => users.id),
-  roomId: varchar("room_id").references(() => rooms.id),
+  uploaderId: text("uploader_id").notNull().references(() => users.id),
+  roomId: text("room_id").references(() => rooms.id),
   encryptedContent: text("encrypted_content").notNull(),
   encapsulatedKey: text("encapsulated_key").notNull(),
   nonce: text("nonce").notNull(),
   mimeType: text("mime_type"),
   size: text("size"),
-  uploadedAt: timestamp("uploaded_at").defaultNow(),
+  uploadedAt: integer("uploaded_at", { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

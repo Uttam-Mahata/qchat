@@ -2,14 +2,17 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { WebSocketManager } from "./websocket";
-import { 
-  generateKeyPair, 
-  encryptData, 
-  decryptData, 
+import {
+  generateKeyPair,
+  encryptData,
+  decryptData,
   getKeyFingerprint,
   encodeBase64,
-  decodeBase64 
+  decodeBase64
 } from "./crypto";
+import bcrypt from "bcrypt";
+
+const SALT_ROUNDS = 10;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -37,10 +40,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate quantum-resistant keypair
       const keypair = generateKeyPair();
-      
-      // Create user (password should be hashed in production)
-      const user = await storage.createUser({ username, password });
-      
+
+      // Hash password before storing
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+      // Create user with hashed password
+      const user = await storage.createUser({ username, password: hashedPassword });
+
       // Store public key
       await storage.updateUserPublicKey(user.id, encodeBase64(keypair.publicKey));
 
@@ -69,7 +75,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
+      if (!user) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      // Compare password with hashed password
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 

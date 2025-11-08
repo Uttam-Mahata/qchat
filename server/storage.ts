@@ -1,15 +1,22 @@
-import { 
-  type User, 
-  type InsertUser, 
-  type Message, 
-  type InsertMessage, 
-  type Room, 
+import {
+  type User,
+  type InsertUser,
+  type Message,
+  type InsertMessage,
+  type Room,
   type InsertRoom,
   type RoomMember,
   type Document,
-  type InsertDocument
+  type InsertDocument,
+  users,
+  messages,
+  rooms,
+  roomMembers,
+  documents,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, and, or, desc, inArray } from "drizzle-orm";
 
 // Generate a unique 8-character room code
 function generateRoomCode(): string {
@@ -307,4 +314,243 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Database-backed storage using Drizzle ORM
+export class DbStorage implements IStorage {
+  // User methods
+  async getUser(id: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUsers(ids: string[]): Promise<User[]> {
+    if (ids.length === 0) return [];
+    const result = await db.select().from(users).where(inArray(users.id, ids));
+    return result;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = randomUUID();
+    const user: User = {
+      ...insertUser,
+      id,
+      publicKey: null,
+      createdAt: new Date(),
+    };
+    await db.insert(users).values(user);
+    return user;
+  }
+
+  async updateUserPublicKey(id: string, publicKey: string): Promise<void> {
+    await db.update(users).set({ publicKey }).where(eq(users.id, id));
+  }
+
+  // Message methods
+  async createMessage(insertMessage: InsertMessage): Promise<Message> {
+    const id = randomUUID();
+    const message: Message = {
+      ...insertMessage,
+      id,
+      recipientId: insertMessage.recipientId || null,
+      roomId: insertMessage.roomId || null,
+      timestamp: new Date(),
+      isRead: false,
+    };
+    await db.insert(messages).values(message);
+    return message;
+  }
+
+  async createMessages(insertMessages: InsertMessage[]): Promise<Message[]> {
+    const messagesToInsert: Message[] = [];
+    const baseTimestamp = new Date();
+
+    for (let i = 0; i < insertMessages.length; i++) {
+      const insertMessage = insertMessages[i];
+      const id = randomUUID();
+      const timestamp = new Date(baseTimestamp.getTime() + i);
+
+      const message: Message = {
+        ...insertMessage,
+        id,
+        recipientId: insertMessage.recipientId || null,
+        roomId: insertMessage.roomId || null,
+        timestamp,
+        isRead: false,
+      };
+      messagesToInsert.push(message);
+    }
+
+    await db.insert(messages).values(messagesToInsert);
+    return messagesToInsert;
+  }
+
+  async getMessage(id: string): Promise<Message | undefined> {
+    const result = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getMessagesByRoom(roomId: string, limit: number = 100, userId?: string): Promise<Message[]> {
+    let query = db
+      .select()
+      .from(messages)
+      .where(eq(messages.roomId, roomId))
+      .orderBy(desc(messages.timestamp));
+
+    const allMessages = await query;
+
+    // If userId is provided, filter to only include messages encrypted for that user
+    if (userId) {
+      const userMessages = allMessages.filter(msg =>
+        // Include messages sent by the user (their own encrypted version)
+        (msg.senderId === userId && (msg.recipientId === null || msg.recipientId === userId)) ||
+        // Include messages sent to the user (encrypted for them)
+        (msg.senderId !== userId && msg.recipientId === userId)
+      );
+
+      // Deduplicate by timestamp and sender to avoid showing multiple versions of the same message
+      const seen = new Set<string>();
+      const deduplicated = userMessages.filter(msg => {
+        const key = `${msg.senderId}-${msg.timestamp?.getTime()}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+      return deduplicated.slice(0, limit);
+    }
+
+    return allMessages.slice(0, limit);
+  }
+
+  async getMessagesBetweenUsers(userId1: string, userId2: string, limit: number = 100): Promise<Message[]> {
+    const result = await db
+      .select()
+      .from(messages)
+      .where(
+        or(
+          and(eq(messages.senderId, userId1), eq(messages.recipientId, userId2)),
+          and(eq(messages.senderId, userId2), eq(messages.recipientId, userId1))
+        )
+      )
+      .orderBy(desc(messages.timestamp))
+      .limit(limit);
+
+    return result;
+  }
+
+  async markMessageAsRead(messageId: string): Promise<void> {
+    await db.update(messages).set({ isRead: true }).where(eq(messages.id, messageId));
+  }
+
+  // Room methods
+  async createRoom(insertRoom: InsertRoom): Promise<Room> {
+    const id = randomUUID();
+    let code = generateRoomCode();
+
+    // Ensure code is unique (with retry limit to prevent infinite loops)
+    let retries = 0;
+    const maxRetries = 10;
+    while (retries < maxRetries) {
+      const existing = await this.getRoomByCode(code);
+      if (!existing) break;
+      code = generateRoomCode();
+      retries++;
+    }
+
+    if (retries >= maxRetries) {
+      throw new Error('Failed to generate unique room code after maximum retries');
+    }
+
+    const room: Room = {
+      ...insertRoom,
+      id,
+      code,
+      isGroup: insertRoom.isGroup || false,
+      createdAt: new Date(),
+    };
+    await db.insert(rooms).values(room);
+    return room;
+  }
+
+  async getRoom(id: string): Promise<Room | undefined> {
+    const result = await db.select().from(rooms).where(eq(rooms.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getRoomByCode(code: string): Promise<Room | undefined> {
+    const result = await db.select().from(rooms).where(eq(rooms.code, code)).limit(1);
+    return result[0];
+  }
+
+  async getRoomsByUser(userId: string): Promise<Room[]> {
+    const userRoomMembers = await db
+      .select()
+      .from(roomMembers)
+      .where(eq(roomMembers.userId, userId));
+
+    if (userRoomMembers.length === 0) return [];
+
+    const roomIds = userRoomMembers.map(member => member.roomId);
+    const result = await db.select().from(rooms).where(inArray(rooms.id, roomIds));
+    return result;
+  }
+
+  async addRoomMember(roomId: string, userId: string, publicKey?: string): Promise<RoomMember> {
+    const id = randomUUID();
+    const member: RoomMember = {
+      id,
+      roomId,
+      userId,
+      publicKey: publicKey || null,
+      joinedAt: new Date(),
+    };
+    await db.insert(roomMembers).values(member);
+    return member;
+  }
+
+  async getRoomMembers(roomId: string): Promise<RoomMember[]> {
+    const result = await db.select().from(roomMembers).where(eq(roomMembers.roomId, roomId));
+    return result;
+  }
+
+  // Document methods
+  async createDocument(insertDocument: InsertDocument): Promise<Document> {
+    const id = randomUUID();
+    const document: Document = {
+      ...insertDocument,
+      id,
+      roomId: insertDocument.roomId || null,
+      mimeType: insertDocument.mimeType || null,
+      size: insertDocument.size || null,
+      uploadedAt: new Date(),
+    };
+    await db.insert(documents).values(document);
+    return document;
+  }
+
+  async getDocument(id: string): Promise<Document | undefined> {
+    const result = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getDocumentsByRoom(roomId: string): Promise<Document[]> {
+    const result = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.roomId, roomId))
+      .orderBy(desc(documents.uploadedAt));
+    return result;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    await db.delete(documents).where(eq(documents.id, id));
+  }
+}
+
+export const storage = new DbStorage();
