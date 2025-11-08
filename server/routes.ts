@@ -122,18 +122,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create room
   app.post("/api/rooms", async (req, res) => {
     try {
-      const { name, isGroup, members } = req.body;
+      const { name, isGroup, members, ownerId } = req.body;
 
       if (!name) {
         return res.status(400).json({ error: "Room name required" });
       }
 
-      const room = await storage.createRoom({ name, isGroup: isGroup || false });
+      const room = await storage.createRoom({
+        name,
+        isGroup: isGroup || false,
+        ownerId: ownerId || null
+      });
+
+      // Add owner as first member if ownerId is provided
+      if (ownerId) {
+        const owner = await storage.getUser(ownerId);
+        if (owner) {
+          await storage.addRoomMember(room.id, ownerId, owner.publicKey || undefined);
+        }
+      }
 
       // Add members
       if (members && Array.isArray(members)) {
         for (const member of members) {
-          await storage.addRoomMember(room.id, member.userId, member.publicKey);
+          // Don't add owner twice
+          if (member.userId !== ownerId) {
+            await storage.addRoomMember(room.id, member.userId, member.publicKey);
+          }
         }
       }
 
@@ -219,12 +234,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(400).json({ error: "userId required" });
       }
-      
+
       const member = await storage.addRoomMember(req.params.roomId, userId, publicKey);
       res.json(member);
     } catch (error) {
       console.error("Add room member error:", error);
       res.status(500).json({ error: "Failed to add room member" });
+    }
+  });
+
+  // Remove member from room
+  app.delete("/api/rooms/:roomId/members/:userId", async (req, res) => {
+    try {
+      const { roomId, userId } = req.params;
+      await storage.removeRoomMember(roomId, userId);
+      res.json({ message: "Member removed successfully" });
+    } catch (error) {
+      console.error("Remove room member error:", error);
+      res.status(500).json({ error: "Failed to remove room member" });
+    }
+  });
+
+  // Update room
+  app.patch("/api/rooms/:roomId", async (req, res) => {
+    try {
+      const { roomId } = req.params;
+      const { name, requestUserId } = req.body;
+
+      if (!requestUserId) {
+        return res.status(400).json({ error: "requestUserId required" });
+      }
+
+      // Verify ownership
+      const room = await storage.getRoom(roomId);
+      if (!room) {
+        return res.status(404).json({ error: "Room not found" });
+      }
+
+      if (room.ownerId && room.ownerId !== requestUserId) {
+        return res.status(403).json({ error: "Only the room owner can update the room" });
+      }
+
+      const updates: Partial<Pick<typeof room, 'name'>> = {};
+      if (name !== undefined) updates.name = name;
+
+      await storage.updateRoom(roomId, updates);
+
+      const updatedRoom = await storage.getRoom(roomId);
+      res.json(updatedRoom);
+    } catch (error) {
+      console.error("Update room error:", error);
+      res.status(500).json({ error: "Failed to update room" });
+    }
+  });
+
+  // Delete room
+  app.delete("/api/rooms/:roomId", async (req, res) => {
+    try {
+      const { roomId } = req.params;
+      const { requestUserId } = req.body;
+
+      if (!requestUserId) {
+        return res.status(400).json({ error: "requestUserId required" });
+      }
+
+      // Verify ownership
+      const room = await storage.getRoom(roomId);
+      if (!room) {
+        return res.status(404).json({ error: "Room not found" });
+      }
+
+      if (room.ownerId && room.ownerId !== requestUserId) {
+        return res.status(403).json({ error: "Only the room owner can delete the room" });
+      }
+
+      await storage.deleteRoom(roomId);
+      res.json({ message: "Room deleted successfully" });
+    } catch (error) {
+      console.error("Delete room error:", error);
+      res.status(500).json({ error: "Failed to delete room" });
     }
   });
 
@@ -412,6 +500,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Decrypt message error:", error);
       res.status(500).json({ error: "Failed to decrypt message" });
+    }
+  });
+
+  // Delete message
+  app.delete("/api/messages/:id", async (req, res) => {
+    try {
+      const { requestUserId } = req.body;
+
+      if (!requestUserId) {
+        return res.status(400).json({ error: "requestUserId required" });
+      }
+
+      // Verify ownership
+      const message = await storage.getMessage(req.params.id);
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      if (message.senderId !== requestUserId) {
+        return res.status(403).json({ error: "Only the sender can delete the message" });
+      }
+
+      await storage.deleteMessage(req.params.id);
+      res.json({ message: "Message deleted successfully" });
+    } catch (error) {
+      console.error("Delete message error:", error);
+      res.status(500).json({ error: "Failed to delete message" });
+    }
+  });
+
+  // Send message with attachment
+  app.post("/api/messages/with-attachment", async (req, res) => {
+    try {
+      const {
+        senderId,
+        recipientId,
+        roomId,
+        content,
+        attachmentName,
+        attachmentContent,
+        attachmentMimeType,
+        attachmentSize,
+        recipientPublicKey
+      } = req.body;
+
+      if (!senderId || !content || !attachmentName || !attachmentContent) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      if (!recipientId && !roomId) {
+        return res.status(400).json({ error: "Either recipientId or roomId required" });
+      }
+
+      // First upload the attachment
+      const attachmentBuffer = Buffer.from(attachmentContent, 'base64');
+      const publicKey = decodeBase64(recipientPublicKey);
+      const encryptedAttachment = encryptData(attachmentBuffer, publicKey);
+
+      const document = await storage.createDocument({
+        name: attachmentName,
+        uploaderId: senderId,
+        roomId: roomId || null,
+        encryptedContent: encodeBase64(encryptedAttachment.ciphertext),
+        encapsulatedKey: encodeBase64(encryptedAttachment.encapsulatedKey),
+        nonce: encodeBase64(encryptedAttachment.nonce),
+        mimeType: attachmentMimeType || null,
+        size: attachmentSize || null,
+      });
+
+      // Now send message with attachment reference
+      const contentBuffer = Buffer.from(content, 'utf-8');
+      const encryptedMessage = encryptData(contentBuffer, publicKey);
+
+      const message = await storage.createMessage({
+        senderId,
+        recipientId: recipientId || null,
+        roomId: roomId || null,
+        encryptedContent: encodeBase64(encryptedMessage.ciphertext),
+        encapsulatedKey: encodeBase64(encryptedMessage.encapsulatedKey),
+        nonce: encodeBase64(encryptedMessage.nonce),
+        attachmentId: document.id,
+      });
+
+      // Broadcast via WebSocket
+      if (roomId) {
+        wsManager.broadcastMessage(message, undefined, roomId);
+      } else if (recipientId) {
+        wsManager.broadcastMessage(message, recipientId, undefined);
+      }
+
+      res.json({ message, document });
+    } catch (error) {
+      console.error("Send message with attachment error:", error);
+      res.status(500).json({ error: "Failed to send message with attachment" });
     }
   });
 

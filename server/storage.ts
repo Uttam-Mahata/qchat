@@ -46,6 +46,7 @@ export interface IStorage {
   getMessagesByRoom(roomId: string, limit?: number, userId?: string): Promise<Message[]>;
   getMessagesBetweenUsers(userId1: string, userId2: string, limit?: number): Promise<Message[]>;
   markMessageAsRead(messageId: string): Promise<void>;
+  deleteMessage(messageId: string): Promise<void>;
   
   // Room methods
   createRoom(room: InsertRoom): Promise<Room>;
@@ -54,6 +55,9 @@ export interface IStorage {
   getRoomsByUser(userId: string): Promise<Room[]>;
   addRoomMember(roomId: string, userId: string, publicKey?: string): Promise<RoomMember>;
   getRoomMembers(roomId: string): Promise<RoomMember[]>;
+  deleteRoom(roomId: string): Promise<void>;
+  removeRoomMember(roomId: string, userId: string): Promise<void>;
+  updateRoom(roomId: string, updates: Partial<Pick<Room, 'name'>>): Promise<void>;
   
   // Document methods
   createDocument(document: InsertDocument): Promise<Document>;
@@ -219,6 +223,10 @@ export class MemStorage implements IStorage {
     }
   }
 
+  async deleteMessage(messageId: string): Promise<void> {
+    this.messages.delete(messageId);
+  }
+
   // Room methods
   async createRoom(insertRoom: InsertRoom): Promise<Room> {
     const id = randomUUID();
@@ -282,6 +290,45 @@ export class MemStorage implements IStorage {
   async getRoomMembers(roomId: string): Promise<RoomMember[]> {
     return Array.from(this.roomMembers.values())
       .filter(member => member.roomId === roomId);
+  }
+
+  async deleteRoom(roomId: string): Promise<void> {
+    // Delete room members
+    const memberIds = Array.from(this.roomMembers.values())
+      .filter(member => member.roomId === roomId)
+      .map(member => member.id);
+    memberIds.forEach(id => this.roomMembers.delete(id));
+
+    // Delete messages in the room
+    const messageIds = Array.from(this.messages.values())
+      .filter(msg => msg.roomId === roomId)
+      .map(msg => msg.id);
+    messageIds.forEach(id => this.messages.delete(id));
+
+    // Delete documents in the room
+    const docIds = Array.from(this.documents.values())
+      .filter(doc => doc.roomId === roomId)
+      .map(doc => doc.id);
+    docIds.forEach(id => this.documents.delete(id));
+
+    // Delete the room itself
+    this.rooms.delete(roomId);
+  }
+
+  async removeRoomMember(roomId: string, userId: string): Promise<void> {
+    const memberToRemove = Array.from(this.roomMembers.values())
+      .find(member => member.roomId === roomId && member.userId === userId);
+    if (memberToRemove) {
+      this.roomMembers.delete(memberToRemove.id);
+    }
+  }
+
+  async updateRoom(roomId: string, updates: Partial<Pick<Room, 'name'>>): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (room) {
+      Object.assign(room, updates);
+      this.rooms.set(roomId, room);
+    }
   }
 
   // Document methods
@@ -357,6 +404,7 @@ export class DbStorage implements IStorage {
       id,
       recipientId: insertMessage.recipientId || null,
       roomId: insertMessage.roomId || null,
+      attachmentId: insertMessage.attachmentId || null,
       timestamp: new Date(),
       isRead: false,
     };
@@ -378,6 +426,7 @@ export class DbStorage implements IStorage {
         id,
         recipientId: insertMessage.recipientId || null,
         roomId: insertMessage.roomId || null,
+        attachmentId: insertMessage.attachmentId || null,
         timestamp,
         isRead: false,
       };
@@ -448,6 +497,10 @@ export class DbStorage implements IStorage {
     await db.update(messages).set({ isRead: true }).where(eq(messages.id, messageId));
   }
 
+  async deleteMessage(messageId: string): Promise<void> {
+    await db.delete(messages).where(eq(messages.id, messageId));
+  }
+
   // Room methods
   async createRoom(insertRoom: InsertRoom): Promise<Room> {
     const id = randomUUID();
@@ -472,6 +525,7 @@ export class DbStorage implements IStorage {
       id,
       code,
       isGroup: insertRoom.isGroup || false,
+      ownerId: insertRoom.ownerId || null,
       createdAt: new Date(),
     };
     await db.insert(rooms).values(room);
@@ -517,6 +571,30 @@ export class DbStorage implements IStorage {
   async getRoomMembers(roomId: string): Promise<RoomMember[]> {
     const result = await db.select().from(roomMembers).where(eq(roomMembers.roomId, roomId));
     return result;
+  }
+
+  async deleteRoom(roomId: string): Promise<void> {
+    // Delete room members first (foreign key constraint)
+    await db.delete(roomMembers).where(eq(roomMembers.roomId, roomId));
+    // Delete messages in the room
+    await db.delete(messages).where(eq(messages.roomId, roomId));
+    // Delete documents in the room
+    await db.delete(documents).where(eq(documents.roomId, roomId));
+    // Delete the room itself
+    await db.delete(rooms).where(eq(rooms.id, roomId));
+  }
+
+  async removeRoomMember(roomId: string, userId: string): Promise<void> {
+    await db.delete(roomMembers).where(
+      and(
+        eq(roomMembers.roomId, roomId),
+        eq(roomMembers.userId, userId)
+      )
+    );
+  }
+
+  async updateRoom(roomId: string, updates: Partial<Pick<Room, 'name'>>): Promise<void> {
+    await db.update(rooms).set(updates).where(eq(rooms.id, roomId));
   }
 
   // Document methods

@@ -20,6 +20,7 @@ export const messages = sqliteTable("messages", {
   encryptedContent: text("encrypted_content").notNull(),
   encapsulatedKey: text("encapsulated_key").notNull(),
   nonce: text("nonce").notNull(),
+  attachmentId: text("attachment_id").references(() => documents.id),
   timestamp: integer("timestamp", { mode: 'timestamp' }).$defaultFn(() => new Date()),
   isRead: integer("is_read", { mode: 'boolean' }).default(false),
 });
@@ -29,6 +30,7 @@ export const rooms = sqliteTable("rooms", {
   name: text("name").notNull(),
   code: text("code").notNull().unique(),
   isGroup: integer("is_group", { mode: 'boolean' }).default(false),
+  ownerId: text("owner_id").references(() => users.id),
   createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
@@ -65,11 +67,13 @@ export const insertMessageSchema = createInsertSchema(messages).pick({
   encryptedContent: true,
   encapsulatedKey: true,
   nonce: true,
+  attachmentId: true,
 });
 
 export const insertRoomSchema = createInsertSchema(rooms).pick({
   name: true,
   isGroup: true,
+  ownerId: true,
   // Note: 'code' field is intentionally excluded as it is auto-generated server-side
 });
 
