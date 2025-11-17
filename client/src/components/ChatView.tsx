@@ -33,8 +33,67 @@ export function ChatView({
 }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [isTyping, setIsTyping] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const wsClient = useRef(getWebSocketClient());
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Load historical messages when room/chat changes
+  useEffect(() => {
+    const loadMessages = async () => {
+      const userId = localStorage.getItem('userId');
+      if (!userId) return;
+
+      setIsLoadingMessages(true);
+      try {
+        const { apiClient } = await import('@/lib/api');
+        const keypair = getStoredKeyPair();
+        
+        let encryptedMessages: any[] = [];
+        
+        if (roomId) {
+          // Load room messages
+          encryptedMessages = await apiClient.getRoomMessages(roomId, 50);
+        } else if (recipientId) {
+          // Load direct messages
+          encryptedMessages = await apiClient.getDirectMessages(userId, recipientId, 50);
+        }
+        
+        // Decrypt messages
+        const decryptedMessages: Message[] = [];
+        for (const msg of encryptedMessages) {
+          let content = '[Encrypted]';
+          try {
+            if (keypair?.secretKey) {
+              const decrypted = await apiClient.decryptMessage(msg.id, keypair.secretKey);
+              content = decrypted.content;
+            }
+          } catch (error) {
+            console.error('Failed to decrypt message:', error);
+            content = '[Failed to decrypt]';
+          }
+          
+          decryptedMessages.push({
+            id: msg.id,
+            content,
+            timestamp: new Date(msg.timestamp).toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }),
+            isSent: msg.senderId === userId,
+          });
+        }
+        
+        // Reverse to show oldest first
+        setMessages(decryptedMessages.reverse());
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+      } finally {
+        setIsLoadingMessages(false);
+      }
+    };
+
+    loadMessages();
+  }, [roomId, recipientId]);
 
   useEffect(() => {
     const client = wsClient.current;

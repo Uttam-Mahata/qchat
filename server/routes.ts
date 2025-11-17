@@ -119,6 +119,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update user's public key
+  app.put("/api/users/:id/public-key", async (req, res) => {
+    try {
+      const { publicKey } = req.body;
+      
+      if (!publicKey) {
+        return res.status(400).json({ error: "Public key required" });
+      }
+      
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      await storage.updateUserPublicKey(req.params.id, publicKey);
+      
+      res.json({
+        success: true,
+        fingerprint: getKeyFingerprint(decodeBase64(publicKey)),
+      });
+    } catch (error) {
+      console.error("Update public key error:", error);
+      res.status(500).json({ error: "Failed to update public key" });
+    }
+  });
+
   // Create room
   app.post("/api/rooms", async (req, res) => {
     try {
